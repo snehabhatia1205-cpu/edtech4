@@ -1,0 +1,10 @@
+key word HT 
+1 null hypothesis 
+. default assumption 
+. nothing has changed
+.no difference 
+2 alternative hypothesis ()
+what we want to prove 
+there IS a difference 
+3 p value  probability that the 
+observed result happened by chance 
