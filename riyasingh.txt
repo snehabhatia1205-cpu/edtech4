@@ -1,0 +1,138 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import re
+from sklearn.preprocessing import MinMaxScaler
+import plotly.express as px
+
+st.set_page_config(page_title="Netflix Viewer Retention Dashboard", layout="wide")
+
+# -----------------------------
+# Synthetic Dataset Generator
+# -----------------------------
+def generate_dataset(n=1000):
+    np.random.seed(42)
+    
+    titles = [f"Show {i} ({np.random.randint(2000,2024)})" for i in range(n)]
+    genres = np.random.choice(["Drama", "Comedy", "Action", "Thriller", "Romance", "Sci-Fi"], n)
+    countries = np.random.choice(["USA", "India", "UK", "Canada", "Germany"], n)
+    
+    data = pd.DataFrame({
+        "content_id": range(1, n+1),
+        "title": titles,
+        "genre": genres,
+        "country": countries,
+        "release_year": np.random.randint(2000, 2024, n),
+        "duration_minutes": np.random.randint(60, 180, n),
+        "views": np.random.randint(1000, 1000000, n),
+        "watch_time_minutes": np.random.randint(5000, 5000000, n),
+        "likes": np.random.randint(100, 50000, n),
+        "completion_rate": np.round(np.random.uniform(0.2, 1.0, n), 2)
+    })
+    
+    return data
+
+
+# -----------------------------
+# Cleaning & Feature Engineering
+# -----------------------------
+def clean_transform(df):
+    
+    df = df.copy()
+    
+    # Remove duplicates
+    df.drop_duplicates(inplace=True)
+    
+    # Regex: Extract year from title
+    df["year_extracted"] = df["title"].apply(
+        lambda x: int(re.search(r"\((\d{4})\)", str(x)).group(1)) if re.search(r"\((\d{4})\)", str(x)) else np.nan
+    )
+    
+    # Fill missing numeric
+    num_cols = df.select_dtypes(include=np.number).columns
+    df[num_cols] = df[num_cols].fillna(df[num_cols].median())
+    
+    # Feature Engineering
+    df["engagement_score"] = (
+        df["likes"] * 0.4 +
+        df["completion_rate"] * 1000 * 0.6
+    )
+    
+    # Retention Category
+    df["retention_category"] = pd.cut(
+        df["completion_rate"],
+        bins=[0, 0.5, 0.75, 1],
+        labels=["Low", "Medium", "High"]
+    )
+    
+    # Normalize numeric features
+    scaler = MinMaxScaler()
+    df[num_cols] = scaler.fit_transform(df[num_cols])
+    
+    return df
+
+
+# -----------------------------
+# Streamlit UI
+# -----------------------------
+st.title("🎬 Netflix Content Performance & Viewer Retention Dashboard")
+
+st.sidebar.header("Upload or Generate Dataset")
+
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+
+if st.sidebar.button("Generate Sample Dataset (1000 rows)"):
+    df = generate_dataset(1000)
+    st.session_state["data"] = df
+
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.session_state["data"] = df
+
+if "data" in st.session_state:
+    
+    raw_df = st.session_state["data"]
+    
+    st.subheader("Raw Data")
+    st.dataframe(raw_df.head())
+    
+    df = clean_transform(raw_df)
+    
+    st.subheader("Cleaned & Transformed Data")
+    st.dataframe(df.head())
+    
+    # Download cleaned data
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Cleaned Dataset", csv, "cleaned_data.csv", "text/csv")
+    
+    # -----------------------------
+    # Dashboard
+    # -----------------------------
+    st.subheader("📊 Dashboard")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    col1.metric("Total Titles", len(df))
+    col2.metric("Avg Completion Rate", round(df["completion_rate"].mean(), 2))
+    col3.metric("Avg Engagement Score", round(df["engagement_score"].mean(), 2))
+    
+    # Genre distribution
+    fig1 = px.histogram(df, x="genre", title="Content by Genre")
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Views vs Completion
+    fig2 = px.scatter(
+        df,
+        x="views",
+        y="completion_rate",
+        color="genre",
+        title="Views vs Completion Rate"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Retention category
+    fig3 = px.pie(df, names="retention_category", title="Retention Category Distribution")
+    st.plotly_chart(fig3, use_container_width=True)
+
+else:
+    st.info("Upload a dataset or generate a sample dataset from the sidebar.")
